@@ -1,0 +1,29 @@
+[Unit]
+Description=Yelp - Voice Response System for Dementia Care
+After=sound.target network.target pulseaudio.service
+
+[Service]
+Type=simple
+User=ljung
+WorkingDirectory=/home/ljung/yelp
+
+# Ensure only one instance runs
+ExecStartPre=/usr/bin/pkill -9 -f yelp_complete.py || true
+ExecStart=/home/ljung/yelp/venv/bin/python3 /home/ljung/yelp/yelp_complete.py
+
+Environment="PYTHONUNBUFFERED=1"
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Ensure clean shutdown
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+# Optional: Run with lower priority
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

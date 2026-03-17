@@ -1,0 +1,52 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Logs
+logs/
+*.log
+*.json
+
+# Temporary files
+temp/
+*.wav
+*.tmp
+
+# Audio models (too large for git)
+piper_voices/*.onnx
+models/
+
+# Training data (contains personal audio)
+training_audio/
+
+# Old/backup files
+old/
+*.bak
+*~
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local configuration (may contain sensitive data)
+*.local
+
+# other files
+YELP_FINALE_ANLEITUNG.md
+yelp_complete_working.py
+test_piper_stimmen.sh
+test_audio_output.sh
+setup_yelp_piper_clean.sh
+download_eva_medium.sh
+check_microphone.sh
+check_mic_usage.sh

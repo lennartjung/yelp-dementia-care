@@ -1,0 +1,14 @@
+[Unit]
+Description=Yelp Web Interface
+After=network.target
+
+[Service]
+Type=simple
+User=ljung
+WorkingDirectory=/home/ljung/yelp
+ExecStart=/home/ljung/yelp/venv/bin/python3 /home/ljung/yelp/yelp_web.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
