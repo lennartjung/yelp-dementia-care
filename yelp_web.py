@@ -63,6 +63,23 @@ HTML_TEMPLATE = """
             <button class="btn-primary" onclick="location.reload()">↻ Refresh</button>
         </div>
 
+        <!-- System Health Card -->
+        <div class="card">
+            <h2>System Health</h2>
+            <div class="param-grid">
+                <div class="param-item">
+                    <label>🔊 Audio Output</label>
+                    <div class="status {{ audio.output_class }}">{{ audio.output_status }}</div>
+                    <div class="help-text">Master: {{ audio.master_volume }}</div>
+                </div>
+                <div class="param-item">
+                    <label>🎤 PulseAudio</label>
+                    <div class="status {{ audio.pulse_class }}">{{ audio.pulse_status }}</div>
+                </div>
+            </div>
+            <button class="btn-secondary" onclick="serviceAction('fix_audio')">🔧 Fix Audio (Unmute & Restart PA)</button>
+        </div>
+
         <!-- Configuration Card -->
         <div class="card">
             <h2>Configuration</h2>
@@ -144,6 +161,51 @@ def get_service_status():
     else:
         return "stopped", "Service is Stopped"
 
+def get_audio_status():
+    """Check audio system health"""
+    status = {
+        'output_status': 'Unknown',
+        'output_class': 'stopped',
+        'master_volume': 'Unknown',
+        'pulse_status': 'Unknown',
+        'pulse_class': 'stopped'
+    }
+
+    # Check Master volume
+    try:
+        result = subprocess.run(['amixer', 'get', 'Master'], capture_output=True, text=True)
+        if result.returncode == 0:
+            lines = result.stdout
+            # Look for [on] or [off]
+            if '[on]' in lines:
+                status['output_status'] = 'Unmuted'
+                status['output_class'] = 'running'
+            elif '[off]' in lines:
+                status['output_status'] = 'MUTED'
+                status['output_class'] = 'stopped'
+
+            # Extract volume percentage
+            import re
+            match = re.search(r'\[(\d+)%\]', lines)
+            if match:
+                status['master_volume'] = f"{match.group(1)}%"
+    except:
+        status['output_status'] = 'Error checking'
+
+    # Check PulseAudio
+    try:
+        result = subprocess.run(['pulseaudio', '--check'], capture_output=True)
+        if result.returncode == 0:
+            status['pulse_status'] = 'Running'
+            status['pulse_class'] = 'running'
+        else:
+            status['pulse_status'] = 'Not Running'
+            status['pulse_class'] = 'stopped'
+    except:
+        status['pulse_status'] = 'Error checking'
+
+    return status
+
 def get_config():
     """Read current configuration from script"""
     config = {}
@@ -215,13 +277,15 @@ def index():
     status_class, status_text = get_service_status()
     config = get_config()
     logs = get_logs()
+    audio = get_audio_status()
 
     return render_template_string(
         HTML_TEMPLATE,
         status_class=status_class,
         status_text=status_text,
         config=config,
-        logs=logs
+        logs=logs,
+        audio=audio
     )
 
 @app.route('/service/<action>', methods=['POST'])
@@ -237,6 +301,19 @@ def service_control(action):
             subprocess.run(['pkill', '-f', 'yelp_complete.py'])
             subprocess.Popen(['bash', os.path.join(YELP_DIR, 'start_yelp_exclusive.sh')])
             return jsonify({'status': 'success', 'message': 'Service restarted'})
+        elif action == 'fix_audio':
+            # Unmute audio
+            subprocess.run(['amixer', 'set', 'Master', '100%', 'unmute'])
+            subprocess.run(['amixer', 'set', 'PCM', '100%', 'unmute'])
+            # Restart PulseAudio
+            subprocess.run(['pulseaudio', '-k'])
+            subprocess.run(['pulseaudio', '--start'])
+            # Wait and restart service
+            import time
+            time.sleep(2)
+            subprocess.run(['pkill', '-f', 'yelp_complete.py'])
+            subprocess.Popen(['bash', os.path.join(YELP_DIR, 'start_yelp_exclusive.sh')])
+            return jsonify({'status': 'success', 'message': 'Audio fixed and service restarted'})
         else:
             return jsonify({'status': 'error', 'message': 'Invalid action'})
     except Exception as e:

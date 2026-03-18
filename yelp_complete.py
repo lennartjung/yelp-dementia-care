@@ -36,12 +36,13 @@ WHISPER_BEAM_SIZE = 5         # 1-10, höher=genauer aber langsamer (Standard: 5
 WHISPER_BEST_OF = 5           # Anzahl Kandidaten (Standard: 5)
 WHISPER_PATIENCE = 1.0        # Beam search patience (Standard: 1.0)
 
-AUDIO_DEVICE_INDEX = 14  # default (PulseAudio) - works with Jabra
+AUDIO_DEVICE_NAME = "default"  # Use "default" device name (more reliable than index)
 
 # Piper mit vollständigem Pfad
+PIPER_BINARY = "/home/ljung/yelp/venv/bin/piper"
 PIPER_MODEL = "/home/ljung/yelp/piper_voices/de_DE-kerstin-low.onnx"
 PIPER_SPEECH_SPEED = 1.5  # 1.0=normal, 1.5=slower, 2.0=very slow
-SILENCE_FILE = "/home/ljung/yelp/silence_1s.wav"
+SILENCE_FILE = "/home/ljung/yelp/speaker_init.wav"  # Wakeup tone + silence
 
 # Log-Dateien mit Rotation
 LOG_DIR = "/home/ljung/yelp/logs"
@@ -59,7 +60,7 @@ BACKUP_COUNT = 3
 # Zeitbereiche: Nacht (22-6 Uhr), Morgen (6-12 Uhr), Tag (12-18 Uhr), Abend (18-22 Uhr)
 
 ANTWORTEN_NACHT = [
-    "Schlaf ruhig weiter, ich passe auf dich auf.",
+    "Du kannst ruhig weiter schlafen, ich passe auf dich auf.",
     "Alles ist gut, ich bin bei dir.",
     "Ich bin hier.",
     "Du bist nicht allein.",
@@ -267,7 +268,7 @@ def antworte(text, antwort_nummer, tageszeit):
 
         # Generate speech with Piper (with speed control)
         process = subprocess.Popen(
-            ["piper", "--model", PIPER_MODEL, "--length_scale", str(PIPER_SPEECH_SPEED), "--output_file", temp_file],
+            [PIPER_BINARY, "--model", PIPER_MODEL, "--length_scale", str(PIPER_SPEECH_SPEED), "--output_file", temp_file],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
@@ -323,20 +324,37 @@ def main():
 
     tageszeit, antworten = get_antworten_fuer_tageszeit()
 
-    log_event("SYSTEM_INFO", f"Mikrofon: H2n USB ({RATE} Hz, {CHANNELS} Kanäle)")
+    # Find device index by name (more reliable than fixed index)
+    p = pyaudio.PyAudio()
+    device_index = None
+
+    for i in range(p.get_device_count()):
+        try:
+            info = p.get_device_info_by_index(i)
+            if AUDIO_DEVICE_NAME in info['name'].lower():
+                device_index = i
+                mic_name = info['name']
+                break
+        except:
+            continue
+
+    if device_index is None:
+        log_event("ERROR", f"Audio device '{AUDIO_DEVICE_NAME}' not found, using default")
+        device_index = None  # Let PyAudio choose default
+        mic_name = "System Default"
+
+    log_event("SYSTEM_INFO", f"Mikrofon: {mic_name} (Index: {device_index}, {RATE} Hz, {CHANNELS} Kanäle)")
     log_event("SYSTEM_INFO", f"Rufererkennung - Schwelle: {RUF_SCHWELLE}, Stille: {STILLE_DAUER}s, Min-Länge: {MIN_AUDIO_LAENGE}s")
     log_event("SYSTEM_INFO", f"Whisper - Temp: {WHISPER_TEMPERATURE}, Beam: {WHISPER_BEAM_SIZE}, BestOf: {WHISPER_BEST_OF}")
     log_event("SYSTEM_INFO", f"Tageszeit: {tageszeit}, Antworten: {len(antworten)}")
     log_event("SYSTEM_INFO", f"Log-Rotation: Max {MAX_LOG_SIZE // (1024*1024)} MB, {BACKUP_COUNT} Backups")
-
-    p = pyaudio.PyAudio()
 
     stream = p.open(
         format=pyaudio.paInt16,
         channels=CHANNELS,
         rate=RATE,
         input=True,
-        input_device_index=AUDIO_DEVICE_INDEX,
+        input_device_index=device_index,
         frames_per_buffer=CHUNK,
         stream_callback=audio_callback
     )
